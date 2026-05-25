@@ -351,13 +351,11 @@
 
     GM_registerMenuCommand('⚙️ Configure YT Suite', renderConfigDialog);
 
-    let activeHoveredCard = null;
     let mainObserverInstance = null;
 
-    // Hover tracking
+    // Hover tracking (only used for future features, kept for compatibility)
     document.addEventListener('pointerover', (e) => {
-        const card = e.target.closest('ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer');
-        if (card) activeHoveredCard = card;
+        // Could be used for hover-based features in future versions
     }, { passive: true });
 
     // Block button click handler

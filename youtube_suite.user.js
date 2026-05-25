@@ -243,15 +243,16 @@
             
             // Extract title
             const titleEl = card.querySelector('#video-title, yt-lockup-metadata-view-model, h3.yt-core-attributed-string');
-            const titleText = titleEl ? (titleEl.textContent || titleEl.innerText || '').trim() : '';
+            const titleText = titleEl ? String(titleEl.textContent || titleEl.innerText || '').trim() : '';
             
             // Extract channel name
             const channelEl = card.querySelector('ytd-channel-name a, #channel-name a, yt-lockup-metadata-view-model a');
-            const channelName = channelEl ? (channelEl.textContent || channelEl.innerText || '').trim() : '';
+            const channelName = channelEl ? String(channelEl.textContent || channelEl.innerText || '').trim() : '';
 
             return { videoId, titleText, channelName };
         } catch (e) {
-            return null;
+            log('Error extracting video info:', e);
+            return { videoId: null, titleText: '', channelName: '' };
         }
     };
 
@@ -277,21 +278,22 @@
 
             // Check for Shorts shelf
             if (STATE.removeShorts) {
-                const isShorts = card.closest('ytd-rich-shelf-renderer[is-shorts], ytd-rich-section-renderer')?.querySelector('[overlay-style="SHORTS"], yt-icon[icon="shorts_logo"]');
-                if (isShorts || card.closest('ytd-rich-shelf-renderer[is-shorts]')) {
-                    hideNode(card.closest('ytd-rich-shelf-renderer') || card);
+                const shortsShelf = card.closest('ytd-rich-shelf-renderer[is-shorts]');
+                const hasShortsIcon = card.closest('ytd-rich-section-renderer')?.querySelector('[overlay-style="SHORTS"], yt-icon[icon="shorts_logo"]');
+                if (shortsShelf || hasShortsIcon) {
+                    hideNode(shortsShelf || card.closest('ytd-rich-shelf-renderer') || card);
                     return;
                 }
             }
 
             // Check keyword blacklist
             const matchesKeyword = STATE.keywords.some(keyword => 
-                info.titleText.toLowerCase().includes(keyword.toLowerCase())
+                String(info.titleText || '').toLowerCase().includes(String(keyword || '').toLowerCase())
             );
 
             // Check channel blacklist
             const matchesChannel = STATE.channels.some(blocked => 
-                info.channelName.toLowerCase() === blocked.toLowerCase()
+                String(info.channelName || '').toLowerCase() === String(blocked || '').toLowerCase()
             );
 
             if (matchesKeyword || matchesChannel) {
@@ -306,11 +308,11 @@
                 const blockBtn = document.createElement('button');
                 blockBtn.className = 'yt-suite-block-btn';
                 blockBtn.innerHTML = '🚫';
-                blockBtn.title = 'Block Channel';
+                blockBtn.title = 'Block Channel: ' + (info.channelName || 'Unknown');
                 blockBtn.onclick = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    addChannelToBlacklist(info.channelName);
+                    addChannelToBlacklist(info.channelName || '');
                     hideNode(card);
                 };
                 thumbnailContainer.style.position = 'relative';
@@ -328,7 +330,7 @@
         GM_setValue('yt_suite_channels', STATE.channels.join(', '));
         
         GM_notification({
-            text: `Channel "${channelName}" added to blocklist!`,
+            text: 'Channel "' + channelName + '" added to blocklist!',
             title: 'YT Suite',
             timeout: 3000
         });

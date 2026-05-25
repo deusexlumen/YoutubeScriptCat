@@ -23,10 +23,24 @@
     
     const loadState = () => {
         try {
+            const rawKeywords = GM_getValue('yt_suite_keywords', ['spoiler', 'clickbait', 'unfassbar']);
+            const rawChannels = GM_getValue('yt_suite_channels', ['NervigerCreatorTV']);
+            const rawShorts = GM_getValue('yt_suite_remove_shorts', true);
+            
+            // Ensure arrays are always arrays (handle corrupted/old data)
+            const ensureArray = (val, defaultArr) => {
+                if (Array.isArray(val)) return val;
+                if (typeof val === 'string') {
+                    const parsed = val.split(',').map(s => s.trim()).filter(s => s.length > 0);
+                    return parsed.length > 0 ? parsed : defaultArr;
+                }
+                return defaultArr;
+            };
+            
             STATE = {
-                keywords: GM_getValue('yt_suite_keywords', ['spoiler', 'clickbait', 'unfassbar']),
-                channels: GM_getValue('yt_suite_channels', ['NervigerCreatorTV']),
-                removeShorts: GM_getValue('yt_suite_remove_shorts', true)
+                keywords: ensureArray(rawKeywords, ['spoiler', 'clickbait', 'unfassar']),
+                channels: ensureArray(rawChannels, ['NervigerCreatorTV']),
+                removeShorts: Boolean(rawShorts)
             };
             log('State loaded:', STATE);
         } catch (e) {

@@ -259,10 +259,14 @@
         try {
             // Skip if already processed with same video ID
             const info = extractVideoInfo(card);
-            if (!info || !info.videoId) return;
+            if (!info || !info.videoId) {
+                return;
+            }
 
             // Skip if already hidden
-            if (card.classList.contains('yt-suite-hidden')) return;
+            if (card.classList.contains('yt-suite-hidden')) {
+                return;
+            }
 
             // Check for ads
             const isAd = card.querySelector('ytd-ad-slot-renderer, .badge-style-type-ad, [class*="ad"]');
@@ -313,7 +317,7 @@
                 thumbnailContainer.appendChild(blockBtn);
             }
         } catch (e) {
-            // Silent fail
+            log('Error processing card:', e);
         }
     };
 

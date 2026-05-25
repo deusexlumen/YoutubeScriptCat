@@ -1,0 +1,447 @@
+// ==UserScript==
+// @name         YouTube Homepage Suite v5.0.0 (Recycling-Aware)
+// @namespace    ScriptCatCore.YT
+// @version      5.0.0
+// @description  O(1) state-driven execution layer addressing Web-Component lifecycle races, DOM recycling, and structural shadow-boundaries.
+// @author       ScriptCat-Core
+// @match        *://*.youtube.com/*
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
+// @run-at       document-start
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    // ================= CONFIGURATION STATE =================
+    const STATE = {
+        keywords: GM_getValue('yt_suite_keywords', ['spoiler', 'clickbait', 'unfassbar']),
+        channels: GM_getValue('yt_suite_channels', ['NervigerCreatorTV']),
+        removeShorts: GM_getValue('yt_suite_remove_shorts', true)
+    };
+    // =======================================================
+
+    const injectStyles = () => {
+        const style = document.createElement('style');
+        style.textContent = `
+            /* Structural hiding of nodes while maintaining layout-integrity for virtual grid */
+            .yt-suite-hidden {
+                display: none !important;
+                height: 0 !important;
+                width: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                pointer-events: none !important;
+                visibility: hidden !important;
+            }
+            .yt-suite-block-btn {
+                position: absolute;
+                top: 8px;
+                right: 8px;
+                width: 32px;
+                height: 32px;
+                background-color: rgba(15, 15, 15, 0.95);
+                color: #ff4e4e;
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                border-radius: 50%;
+                cursor: pointer;
+                z-index: 10000 !important; /* Forces dominance over YouTube overlays */
+                display: none;
+                align-items: center;
+                justify-content: center;
+                font-size: 16px;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.6);
+                transition: transform 0.1s ease, background-color 0.2s;
+                pointer-events: auto !important;
+            }
+            /* Explicit capture-target mapping */
+            ytd-rich-item-renderer:hover .yt-suite-block-btn,
+            ytd-video-renderer:hover .yt-suite-block-btn,
+            ytd-compact-video-renderer:hover .yt-suite-block-btn {
+                display: flex !important;
+            }
+            .yt-suite-block-btn:hover {
+                background-color: #ff0000 !important;
+                color: #ffffff !important;
+                transform: scale(1.15);
+            }
+            #yt-suite-header-btn {
+                background: rgba(255, 255, 255, 0.1);
+                color: var(--yt-spec-text-primary, #fff);
+                border: 1px solid var(--yt-spec-10-percent-layer, #333);
+                padding: 6px 14px;
+                border-radius: 18px;
+                cursor: pointer;
+                margin-right: 12px;
+                font-family: "Roboto", sans-serif;
+                font-size: 13px;
+                font-weight: 500;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+            }
+            #yt-suite-header-btn:hover {
+                background: rgba(255, 255, 255, 0.2);
+            }
+            #yt-suite-config-dialog {
+                background: #212121;
+                color: #ffffff;
+                border: 1px solid #3d3d3d;
+                border-radius: 8px;
+                padding: 24px;
+                width: 400px;
+                max-width: 90vw;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+                font-family: "Roboto", "Arial", sans-serif;
+                z-index: 999999 !important;
+            }
+            #yt-suite-config-dialog::backdrop {
+                background: rgba(0, 0, 0, 0.65);
+                backdrop-filter: blur(2px);
+            }
+            .yt-suite-form-group { display: flex; flex-direction: column; margin-bottom: 16px; }
+            .yt-suite-form-group label { margin-bottom: 8px; font-size: 14px; font-weight: 500; color: #aaaaaa; }
+            .yt-suite-form-group textarea { background: #181818; color: #fff; border: 1px solid #3d3d3d; border-radius: 4px; padding: 8px; resize: vertical; min-height: 60px; font-family: monospace; }
+            .yt-suite-form-checkbox { display: flex; align-items: center; gap: 12px; font-size: 14px; margin-bottom: 24px; cursor: pointer; }
+            .yt-suite-dialog-actions { display: flex; justify-content: flex-end; gap: 12px; }
+            .yt-suite-btn { padding: 8px 16px; border: none; border-radius: 18px; cursor: pointer; font-weight: 500; }
+            .yt-suite-btn-cancel { background: transparent; color: #fff; }
+            .yt-suite-btn-cancel:hover { background: rgba(255,255,255,0.1); }
+            .yt-suite-btn-save { background: #3ea6ff; color: #0f0f0f; }
+            .yt-suite-btn-save:hover { background: #65b8ff; }
+        `;
+        document.head.appendChild(style);
+    };
+
+    // State-backed dialog rendering
+    const renderConfigDialog = () => {
+        let dialog = document.getElementById('yt-suite-config-dialog');
+        
+        if (!dialog) {
+            dialog = document.createElement('dialog');
+            dialog.id = 'yt-suite-config-dialog';
+            
+            dialog.innerHTML = `
+                <h2 style="margin: 0 0 20px 0; font-size: 18px;">⚙️ Suite Settings</h2>
+                <div class="yt-suite-form-group">
+                    <label>Keyword Blacklist (Comma separated)</label>
+                    <textarea id="yt-suite-input-keywords">${STATE.keywords.join(', ')}</textarea>
+                </div>
+                <div class="yt-suite-form-group">
+                    <label>Channel Blacklist (Comma separated)</label>
+                    <textarea id="yt-suite-input-channels">${STATE.channels.join(', ')}</textarea>
+                </div>
+                <label class="yt-suite-form-checkbox">
+                    <input type="checkbox" id="yt-suite-input-shorts" ${STATE.removeShorts ? 'checked' : ''}>
+                    Remove Shorts Shelf
+                </label>
+                <div class="yt-suite-dialog-actions">
+                    <button class="yt-suite-btn yt-suite-btn-cancel" id="yt-suite-btn-close">Cancel</button>
+                    <button class="yt-suite-btn yt-suite-btn-save" id="yt-suite-btn-save">Save & Reload</button>
+                </div>
+            `;
+            
+            document.body.appendChild(dialog);
+
+            dialog.querySelector('#yt-suite-btn-close').addEventListener('click', () => dialog.close());
+            dialog.querySelector('#yt-suite-btn-save').addEventListener('click', () => {
+                const parseInput = (str) => str.split(',').map(s => s.trim()).filter(s => s.length > 0);
+                
+                GM_setValue('yt_suite_keywords', parseInput(dialog.querySelector('#yt-suite-input-keywords').value));
+                GM_setValue('yt_suite_channels', parseInput(dialog.querySelector('#yt-suite-input-channels').value));
+                GM_setValue('yt_suite_remove_shorts', dialog.querySelector('#yt-suite-input-shorts').checked);
+
+                window.location.reload();
+            });
+
+            dialog.addEventListener('click', (e) => {
+                const rect = dialog.getBoundingClientRect();
+                const isInDialog = (rect.top <= e.clientY && e.clientY <= rect.top + rect.height &&
+                                    rect.left <= e.clientX && e.clientX <= rect.left + rect.width);
+                if (!isInDialog) dialog.close();
+            });
+        }
+        dialog.showModal();
+    };
+
+    // Dynamic masthead injector overcoming custom-element initialization latency
+    const injectHeaderMenuButton = () => {
+        const mastheadEnd = document.querySelector('ytd-masthead #end');
+        if (mastheadEnd) {
+            if (!document.getElementById('yt-suite-header-btn')) {
+                const btn = document.createElement('button');
+                btn.id = 'yt-suite-header-btn';
+                btn.innerHTML = '⚙️ YT-Suite';
+                btn.onclick = renderConfigDialog;
+                mastheadEnd.prepend(btn);
+            }
+        }
+    };
+
+    GM_registerMenuCommand('⚙️ Configure YT Suite', renderConfigDialog);
+
+    let activeHoveredCard = null;
+    let mainObserverInstance = null;
+
+    // Fast, delegated hover tracking
+    document.addEventListener('pointerover', (e) => {
+        const card = e.target.closest('ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer');
+        if (card) activeHoveredCard = card;
+    }, { passive: true });
+
+    // Explicit delegation for UI trigger
+    document.addEventListener('click', (e) => {
+        if (e.target.matches('.yt-suite-block-btn')) {
+            e.preventDefault();
+            e.stopPropagation();
+            const card = e.target.closest('ytd-rich-item-renderer, ytd-video-renderer');
+            if (card) executeNativeDismissAsync(card);
+        }
+    }, true);
+
+    const awaitSnackbarDismissal = async () => {
+        return new Promise((resolve) => {
+            let frameFallback = 0;
+            const evaluateState = (obs) => {
+                const btn = document.querySelector('tp-yt-paper-toast #close-button button, tp-yt-paper-toast yt-button-shape button');
+                if (btn) {
+                    btn.click();
+                    if (obs) obs.disconnect();
+                    resolve();
+                    return true;
+                }
+                return false;
+            };
+
+            if (evaluateState(null)) return;
+
+            const observer = new MutationObserver((_, obs) => evaluateState(obs));
+            observer.observe(document.body, { childList: true, subtree: true });
+
+            const check = () => {
+                frameFallback++;
+                if (frameFallback > 400) {
+                    observer.disconnect();
+                    resolve();
+                } else requestAnimationFrame(check);
+            };
+            requestAnimationFrame(check);
+        });
+    };
+
+    const awaitPopupInteraction = async (popupContainer) => {
+        return new Promise((resolve) => {
+            let frameFallback = 0;
+            const evaluateState = (obs) => {
+                const items = popupContainer.querySelectorAll('ytd-menu-service-item-renderer, tp-yt-paper-item');
+                for (const item of items) {
+                    const text = (item.textContent || '').toLowerCase();
+                    const icon = item.querySelector('yt-icon');
+                    const iconType = icon ? icon.getAttribute('icon') || '' : '';
+
+                    // Localization-independent target match matching SVGs or attribute keys
+                    const isTarget = 
+                        iconType === 'not_interested' || 
+                        iconType === 'remove_circle_outline' || 
+                        text.includes('empfehlen') || 
+                        text.includes('recommend') || 
+                        text.includes('interesse');
+
+                    if (isTarget) {
+                        item.click();
+                        
+                        try {
+                            const channelEl = activeHoveredCard?.querySelector('ytd-channel-name a');
+                            if (channelEl) {
+                                const cName = channelEl.textContent.trim();
+                                if (cName && !STATE.channels.includes(cName)) {
+                                    STATE.channels.push(cName);
+                                    GM_setValue('yt_suite_channels', STATE.channels);
+                                }
+                            }
+                        } catch {}
+
+                        if (obs) obs.disconnect();
+                        resolve(true);
+                        return true;
+                    }
+                }
+                return false;
+            };
+
+            if (evaluateState(null)) return;
+            const observer = new MutationObserver((_, obs) => evaluateState(obs));
+            observer.observe(popupContainer, { childList: true, subtree: true });
+
+            const check = () => {
+                frameFallback++;
+                if (frameFallback > 300 || popupContainer.style.display === 'none') {
+                    observer.disconnect();
+                    document.body.click(); 
+                    resolve(false);
+                } else requestAnimationFrame(check);
+            };
+            requestAnimationFrame(check);
+        });
+    };
+
+    const executeNativeDismissAsync = async (card) => {
+        try {
+            const menuBtn = card.querySelector('#menu button, yt-icon-button#button');
+            if (!menuBtn) return;
+
+            menuBtn.click();
+            const popupContainer = document.querySelector('ytd-popup-container') || document.body;
+            const interactionSuccessful = await awaitPopupInteraction(popupContainer);
+            if (interactionSuccessful) await awaitSnackbarDismissal();
+        } catch {
+            // Isolated boundary
+        }
+    };
+
+    const hideNode = (node) => {
+        if (!node.classList.contains('yt-suite-hidden')) {
+            node.classList.add('yt-suite-hidden');
+        }
+    };
+
+    // Extracts structural watch identity to capture node-recycling events
+    const extractVideoId = (card) => {
+        const anchor = card.querySelector('a#thumbnail, a#video-title-link, a#video-title, a.ytd-rich-grid-media');
+        if (!anchor) return null;
+        const href = anchor.getAttribute('href');
+        if (!href) return null;
+        const match = href.match(/[?&]v=([^&#]+)/);
+        return match ? match[1] : href; 
+    };
+
+    const processCardNode = (card) => {
+        try {
+            const videoId = extractVideoId(card);
+            
+            // Polymer databinding race bypass: halt if node is functionally empty
+            if (!videoId) return;
+
+            // DOM recycling validation: check if identical node has been bound to a new video state
+            if (card.dataset.suiteVideoId === videoId) return;
+
+            // Reset dynamic class definitions for recycled targets
+            card.dataset.suiteVideoId = videoId;
+            card.classList.remove('yt-suite-hidden');
+
+            const isSponsored = card.querySelector('ytd-ad-slot-renderer, .badge-style-type-ad, .yt-badge-shape');
+            if (isSponsored) {
+                hideNode(card);
+                return;
+            }
+
+            const titleEl = card.querySelector('#video-title, yt-lockup-metadata-view-model');
+            const channelEl = card.querySelector('ytd-channel-name a, yt-lockup-metadata-view-model a');
+            const titleText = titleEl ? titleEl.textContent.trim() : '';
+            const channelName = channelEl ? channelEl.textContent.trim() : '';
+
+            // Postpone evaluation if Polymer elements are mounted but bindings have not completed
+            if (titleText === '' && channelName === '') {
+                card.removeAttribute('data-suite-video-id'); 
+                return;
+            }
+
+            const matchesKeyword = STATE.keywords.some(pattern => titleText.toLowerCase().includes(pattern.toLowerCase()));
+            const matchesChannel = STATE.channels.some(blocked => channelName.toLowerCase() === blocked.toLowerCase());
+
+            if (matchesKeyword || matchesChannel) {
+                hideNode(card);
+                return;
+            }
+
+            // Secure, overlay-proof block button injection inside thumbnails
+            const thumbnailContainer = card.querySelector('ytd-thumbnail, #thumbnail, .yt-core-image');
+            if (thumbnailContainer) {
+                let blockBtn = thumbnailContainer.querySelector('.yt-suite-block-btn');
+                if (!blockBtn) {
+                    blockBtn = document.createElement('button');
+                    blockBtn.className = 'yt-suite-block-btn';
+                    blockBtn.innerHTML = '🚫';
+                    blockBtn.title = 'Block Channel';
+                    thumbnailContainer.style.position = 'relative';
+                    thumbnailContainer.appendChild(blockBtn);
+                }
+            }
+        } catch {
+            // Isolated boundary
+        }
+    };
+
+    const processStructuralSection = (section) => {
+        try {
+            if (section.querySelector('ytd-statement-banner-renderer')) {
+                hideNode(section);
+                return;
+            }
+
+            if (STATE.removeShorts && section.querySelector('ytd-rich-shelf-renderer[is-shorts], yt-icon[icon="shorts_logo"], [overlay-style="SHORTS"]')) {
+                hideNode(section);
+            }
+        } catch {}
+    };
+
+    const runFullSweep = () => {
+        injectHeaderMenuButton();
+        document.querySelectorAll('ytd-rich-section-renderer').forEach(processStructuralSection);
+        document.querySelectorAll('ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer').forEach(processCardNode);
+    };
+
+    const initObserver = () => {
+        if (mainObserverInstance) mainObserverInstance.disconnect();
+
+        mainObserverInstance = new MutationObserver((mutations) => {
+            let hasSignificantStructuralMutations = false;
+            
+            for (const mutation of mutations) {
+                for (const node of mutation.addedNodes) {
+                    if (node.nodeType === 1) { 
+                        const tag = node.tagName;
+                        if (tag === 'YTD-MASTHEAD') {
+                            injectHeaderMenuButton();
+                        } else if (tag === 'YTD-RICH-ITEM-RENDERER' || tag === 'YTD-VIDEO-RENDERER' || tag === 'YTD-COMPACT-VIDEO-RENDERER') {
+                            processCardNode(node);
+                        } else if (tag === 'YTD-RICH-SECTION-RENDERER') {
+                            processStructuralSection(node);
+                        } else {
+                            hasSignificantStructuralMutations = true;
+                        }
+                    }
+                }
+            }
+
+            if (hasSignificantStructuralMutations) {
+                requestAnimationFrame(runFullSweep);
+            }
+        });
+
+        // Deep observe capturing low-level mutations to counter recycled attributes
+        mainObserverInstance.observe(document.documentElement, { 
+            childList: true, 
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['href', 'data-suite-video-id'] 
+        });
+    };
+
+    const bootstrap = () => {
+        injectStyles();
+        runFullSweep();
+        initObserver();
+    };
+
+    document.addEventListener('yt-navigate-finish', () => {
+        runFullSweep();
+    });
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bootstrap);
+    } else {
+        bootstrap();
+    }
+})();

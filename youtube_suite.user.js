@@ -121,35 +121,77 @@
         configDialog = document.createElement('dialog');
         configDialog.id = 'yt-suite-config-dialog';
         
-        configDialog.innerHTML = `
-            <h2 style="margin: 0 0 20px 0; font-size: 18px;">⚙️ Suite Settings</h2>
-            <div class="yt-suite-form-group">
-                <label>Keyword Blacklist (Comma separated)</label>
-                <textarea id="yt-suite-input-keywords">${STATE.keywords.join(', ')}</textarea>
-            </div>
-            <div class="yt-suite-form-group">
-                <label>Channel Blacklist (Comma separated)</label>
-                <textarea id="yt-suite-input-channels">${STATE.channels.join(', ')}</textarea>
-            </div>
-            <label class="yt-suite-form-checkbox">
-                <input type="checkbox" id="yt-suite-input-shorts" ${STATE.removeShorts ? 'checked' : ''}>
-                Remove Shorts Shelf
-            </label>
-            <div class="yt-suite-dialog-actions">
-                <button class="yt-suite-btn yt-suite-btn-cancel" id="yt-suite-btn-close">Cancel</button>
-                <button class="yt-suite-btn yt-suite-btn-save" id="yt-suite-btn-save">Save & Reload</button>
-            </div>
-        `;
+        // Create elements manually to avoid TrustedHTML/CSP issues
+        const h2 = document.createElement('h2');
+        h2.style.margin = '0 0 20px 0';
+        h2.style.fontSize = '18px';
+        h2.textContent = '⚙️ Suite Settings';
+        configDialog.appendChild(h2);
+
+        // Keywords Group
+        const kwGroup = document.createElement('div');
+        kwGroup.className = 'yt-suite-form-group';
+        const kwLabel = document.createElement('label');
+        kwLabel.textContent = 'Keyword Blacklist (Comma separated)';
+        const kwInput = document.createElement('textarea');
+        kwInput.id = 'yt-suite-input-keywords';
+        kwInput.value = STATE.keywords.join(', ');
+        kwGroup.appendChild(kwLabel);
+        kwGroup.appendChild(kwInput);
+        configDialog.appendChild(kwGroup);
+
+        // Channels Group
+        const chGroup = document.createElement('div');
+        chGroup.className = 'yt-suite-form-group';
+        const chLabel = document.createElement('label');
+        chLabel.textContent = 'Channel Blacklist (Comma separated)';
+        const chInput = document.createElement('textarea');
+        chInput.id = 'yt-suite-input-channels';
+        chInput.value = STATE.channels.join(', ');
+        chGroup.appendChild(chLabel);
+        chGroup.appendChild(chInput);
+        configDialog.appendChild(chGroup);
+
+        // Shorts Checkbox
+        const cbLabel = document.createElement('label');
+        cbLabel.className = 'yt-suite-form-checkbox';
+        const cbInput = document.createElement('input');
+        cbInput.type = 'checkbox';
+        cbInput.id = 'yt-suite-input-shorts';
+        cbInput.checked = STATE.removeShorts;
+        const cbText = document.createTextNode(' Remove Shorts Shelf');
+        cbLabel.appendChild(cbInput);
+        cbLabel.appendChild(cbText);
+        configDialog.appendChild(cbLabel);
+
+        // Actions
+        const actions = document.createElement('div');
+        actions.className = 'yt-suite-dialog-actions';
+        
+        const btnCancel = document.createElement('button');
+        btnCancel.className = 'yt-suite-btn yt-suite-btn-cancel';
+        btnCancel.id = 'yt-suite-btn-close';
+        btnCancel.textContent = 'Cancel';
+        
+        const btnSave = document.createElement('button');
+        btnSave.className = 'yt-suite-btn yt-suite-btn-save';
+        btnSave.id = 'yt-suite-btn-save';
+        btnSave.textContent = 'Save & Reload';
+
+        actions.appendChild(btnCancel);
+        actions.appendChild(btnSave);
+        configDialog.appendChild(actions);
         
         document.body.appendChild(configDialog);
 
-        configDialog.querySelector('#yt-suite-btn-close').addEventListener('click', () => configDialog.close());
-        configDialog.querySelector('#yt-suite-btn-save').addEventListener('click', () => {
+        // Event Listeners
+        btnCancel.addEventListener('click', () => configDialog.close());
+        btnSave.addEventListener('click', () => {
             const parseInput = (str) => str.split(',').map(s => s.trim()).filter(s => s.length > 0);
             
-            const newKeywords = parseInput(configDialog.querySelector('#yt-suite-input-keywords').value);
-            const newChannels = parseInput(configDialog.querySelector('#yt-suite-input-channels').value);
-            const newRemoveShorts = configDialog.querySelector('#yt-suite-input-shorts').checked;
+            const newKeywords = parseInput(kwInput.value);
+            const newChannels = parseInput(chInput.value);
+            const newRemoveShorts = cbInput.checked;
 
             GM_setValue('yt_suite_keywords', newKeywords.join(', '));
             GM_setValue('yt_suite_channels', newChannels.join(', '));

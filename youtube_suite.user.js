@@ -382,18 +382,42 @@
     // ================================================
 
     // ================= MAIN PROCESSING =================
+    const processShortsShelf = (section) => {
+        if (!STATE.removeShorts) return;
+        
+        try {
+            // Check various indicators for Shorts shelf
+            const isShortsShelf = 
+                section.getAttribute('is-shorts') === 'true' ||
+                section.querySelector('[overlay-style="SHORTS"]') ||
+                section.querySelector('yt-icon[icon="shorts_logo"]') ||
+                section.querySelector('ytd-thumbnail-overlay-time-status-renderer[overlay-style="SHORTS"]') ||
+                section.textContent?.toLowerCase().includes('shorts');
+            
+            if (isShortsShelf) {
+                hideNode(section);
+                log('Hidden Shorts shelf');
+            }
+        } catch (e) {
+            log('Error processing shorts shelf:', e);
+        }
+    };
+
     const runFullSweep = () => {
         injectHeaderButton();
         
         // Process all video cards
         document.querySelectorAll('ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer').forEach(processCard);
         
-        // Process sections (for Shorts shelf)
+        // Process sections (for Shorts shelf) - check both regular and shadow DOM
         if (STATE.removeShorts) {
-            document.querySelectorAll('ytd-rich-shelf-renderer[is-shorts], ytd-rich-section-renderer').forEach(section => {
-                const hasShorts = section.querySelector('[overlay-style="SHORTS"], yt-icon[icon="shorts_logo"]');
-                if (hasShorts || section.getAttribute('is-shorts') === 'true') {
-                    hideNode(section);
+            // Regular DOM selectors
+            document.querySelectorAll('ytd-rich-shelf-renderer, ytd-rich-section-renderer').forEach(processShortsShelf);
+            
+            // Also check inside shadow roots
+            document.querySelectorAll('ytd-rich-grid-renderer, ytd-watch-next-secondary-results-renderer').forEach(host => {
+                if (host.shadowRoot) {
+                    host.shadowRoot.querySelectorAll('ytd-rich-shelf-renderer, ytd-rich-section-renderer').forEach(processShortsShelf);
                 }
             });
         }
@@ -410,10 +434,13 @@
                     // Process newly added nodes immediately
                     for (const node of mutation.addedNodes) {
                         if (node.nodeType === 1) {
-                            if (node.tagName === 'YTD-MASTHEAD') {
+                            const tagName = node.tagName;
+                            if (tagName === 'YTD-MASTHEAD') {
                                 injectHeaderButton();
-                            } else if (['YTD-RICH-ITEM-RENDERER', 'YTD-VIDEO-RENDERER', 'YTD-COMPACT-VIDEO-RENDERER'].includes(node.tagName)) {
+                            } else if (['YTD-RICH-ITEM-RENDERER', 'YTD-VIDEO-RENDERER', 'YTD-COMPACT-VIDEO-RENDERER'].includes(tagName)) {
                                 processCard(node);
+                            } else if (STATE.removeShorts && ['YTD-RICH-SHELF-RENDERER', 'YTD-RICH-SECTION-RENDERER'].includes(tagName)) {
+                                processShortsShelf(node);
                             }
                         }
                     }

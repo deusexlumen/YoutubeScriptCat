@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         YouTube Homepage Suite v6.0.0 (Fixed & Optimized)
+// @name         YouTube Homepage Suite v7.0.0 (Working Version)
 // @namespace    ScriptCatCore.YT
-// @version      6.0.0
-// @description  Fixed version with proper Shadow DOM handling, error recovery, and stable execution
+// @version      7.0.0
+// @description  Simplified working version - blocks videos by keyword/channel, removes shorts
 // @author       ScriptCat-Core
 // @match        *://*.youtube.com/*
 // @grant        GM_getValue
@@ -15,85 +15,15 @@
 (function() {
     'use strict';
 
-    // ================= CONFIGURATION STATE =================
-    const getStoredValue = (key, defaultValue) => {
-        try {
-            const val = GM_getValue(key);
-            return (val !== undefined && val !== null) ? val : defaultValue;
-        } catch (e) {
-            console.warn('[YT-Suite] GM_getValue error for', key, ':', e);
-            return defaultValue;
-        }
-    };
-
+    // ================= CONFIGURATION =================
     const STATE = {
-        keywords: getStoredValue('yt_suite_keywords', ['spoiler', 'clickbait', 'unfassbar']),
-        channels: getStoredValue('yt_suite_channels', ['NervigerCreatorTV']),
-        removeShorts: getStoredValue('yt_suite_remove_shorts', true)
-    };
-    
-    const DEBUG = false;
-    const log = (...args) => DEBUG && console.log('[YT-Suite]', ...args);
-    const warn = (...args) => console.warn('[YT-Suite]', ...args);
-    // =======================================================
-
-    // ================= SHADOW DOM UTILITIES =================
-    // Durchsucht Shadow DOM rekursiv
-    const queryShadowAll = (root, selector) => {
-        const results = [];
-        if (!root) return results;
-        
-        // Direkt im aktuellen Kontext suchen
-        if (root.querySelectorAll) {
-            results.push(...root.querySelectorAll(selector));
-        }
-        
-        // In Shadow Roots weiterer Elemente suchen
-        const allElements = root.querySelectorAll ? root.querySelectorAll('*') : [];
-        for (const el of allElements) {
-            if (el.shadowRoot) {
-                results.push(...queryShadowAll(el.shadowRoot, selector));
-            }
-        }
-        
-        return results;
+        keywords: (GM_getValue('yt_suite_keywords') || 'spoiler, clickbait, unfassbar').split(',').map(s => s.trim()).filter(s => s),
+        channels: (GM_getValue('yt_suite_channels') || 'NervigerCreatorTV').split(',').map(s => s.trim()).filter(s => s),
+        removeShorts: GM_getValue('yt_suite_remove_shorts') !== false
     };
 
-    const queryShadow = (root, selector) => {
-        return queryShadowAll(root, selector)[0] || null;
-    };
-
-    // Findet Masthead auch in Shadow DOM
-    const findMastheadEnd = () => {
-        // Versuch 1: Direkter Zugriff
-        let masthead = document.querySelector('ytd-masthead');
-        if (masthead?.shadowRoot) {
-            return masthead.shadowRoot.querySelector('#end');
-        }
-        
-        // Versuch 2: Über querySelectorAll mit Shadow-DOM-Traversal
-        const mastheads = document.querySelectorAll('ytd-masthead');
-        for (const mh of mastheads) {
-            if (mh.shadowRoot) {
-                const end = mh.shadowRoot.querySelector('#end');
-                if (end) return end;
-            }
-        }
-        
-        return document.querySelector('#end');
-    };
-
-    // Findet Popup Container in Shadow DOM
-    const findPopupContainer = () => {
-        const popups = document.querySelectorAll('ytd-popup-container');
-        for (const popup of popups) {
-            if (popup.shadowRoot) {
-                return popup.shadowRoot;
-            }
-        }
-        return document.body;
-    };
-    // =======================================================
+    const log = (...args) => console.log('[YT-Suite]', ...args);
+    // ================================================
 
     const injectStyles = () => {
         const style = document.createElement('style');

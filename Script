@@ -1,24 +1,97 @@
 // ==UserScript==
-// @name         YouTube Homepage Suite v5.0.0 (Recycling-Aware)
+// @name         YouTube Homepage Suite v6.0.0 (Fixed & Optimized)
 // @namespace    ScriptCatCore.YT
-// @version      5.0.0
-// @description  O(1) state-driven execution layer addressing Web-Component lifecycle races, DOM recycling, and structural shadow-boundaries.
+// @version      6.0.0
+// @description  Fixed version with proper Shadow DOM handling, error recovery, and stable execution
 // @author       ScriptCat-Core
 // @match        *://*.youtube.com/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
-// @run-at       document-start
+// @grant        GM_notification
+// @run-at       document-idle
 // ==/UserScript==
 
 (function() {
     'use strict';
 
     // ================= CONFIGURATION STATE =================
+    const getStoredValue = (key, defaultValue) => {
+        try {
+            const val = GM_getValue(key);
+            return (val !== undefined && val !== null) ? val : defaultValue;
+        } catch (e) {
+            console.warn('[YT-Suite] GM_getValue error for', key, ':', e);
+            return defaultValue;
+        }
+    };
+
     const STATE = {
-        keywords: GM_getValue('yt_suite_keywords', ['spoiler', 'clickbait', 'unfassbar']),
-        channels: GM_getValue('yt_suite_channels', ['NervigerCreatorTV']),
-        removeShorts: GM_getValue('yt_suite_remove_shorts', true)
+        keywords: getStoredValue('yt_suite_keywords', ['spoiler', 'clickbait', 'unfassbar']),
+        channels: getStoredValue('yt_suite_channels', ['NervigerCreatorTV']),
+        removeShorts: getStoredValue('yt_suite_remove_shorts', true)
+    };
+    
+    const DEBUG = false;
+    const log = (...args) => DEBUG && console.log('[YT-Suite]', ...args);
+    const warn = (...args) => console.warn('[YT-Suite]', ...args);
+    // =======================================================
+
+    // ================= SHADOW DOM UTILITIES =================
+    // Durchsucht Shadow DOM rekursiv
+    const queryShadowAll = (root, selector) => {
+        const results = [];
+        if (!root) return results;
+        
+        // Direkt im aktuellen Kontext suchen
+        if (root.querySelectorAll) {
+            results.push(...root.querySelectorAll(selector));
+        }
+        
+        // In Shadow Roots weiterer Elemente suchen
+        const allElements = root.querySelectorAll ? root.querySelectorAll('*') : [];
+        for (const el of allElements) {
+            if (el.shadowRoot) {
+                results.push(...queryShadowAll(el.shadowRoot, selector));
+            }
+        }
+        
+        return results;
+    };
+
+    const queryShadow = (root, selector) => {
+        return queryShadowAll(root, selector)[0] || null;
+    };
+
+    // Findet Masthead auch in Shadow DOM
+    const findMastheadEnd = () => {
+        // Versuch 1: Direkter Zugriff
+        let masthead = document.querySelector('ytd-masthead');
+        if (masthead?.shadowRoot) {
+            return masthead.shadowRoot.querySelector('#end');
+        }
+        
+        // Versuch 2: Über querySelectorAll mit Shadow-DOM-Traversal
+        const mastheads = document.querySelectorAll('ytd-masthead');
+        for (const mh of mastheads) {
+            if (mh.shadowRoot) {
+                const end = mh.shadowRoot.querySelector('#end');
+                if (end) return end;
+            }
+        }
+        
+        return document.querySelector('#end');
+    };
+
+    // Findet Popup Container in Shadow DOM
+    const findPopupContainer = () => {
+        const popups = document.querySelectorAll('ytd-popup-container');
+        for (const popup of popups) {
+            if (popup.shadowRoot) {
+                return popup.shadowRoot;
+            }
+        }
+        return document.body;
     };
     // =======================================================
 
@@ -165,9 +238,9 @@
         dialog.showModal();
     };
 
-    // Dynamic masthead injector overcoming custom-element initialization latency
+    // Dynamic masthead injector with Shadow DOM support and retry mechanism
     const injectHeaderMenuButton = () => {
-        const mastheadEnd = document.querySelector('ytd-masthead #end');
+        const mastheadEnd = findMastheadEnd();
         if (mastheadEnd) {
             if (!document.getElementById('yt-suite-header-btn')) {
                 const btn = document.createElement('button');
@@ -175,8 +248,33 @@
                 btn.innerHTML = '⚙️ YT-Suite';
                 btn.onclick = renderConfigDialog;
                 mastheadEnd.prepend(btn);
+                log('Header button injected successfully');
             }
+            return true;
         }
+        return false;
+    };
+
+    // Retry-Injektor für Header-Button (wird mehrmals versucht)
+    const injectHeaderMenuButtonWithRetry = (maxAttempts = 10, delay = 500) => {
+        let attempts = 0;
+        
+        const tryInject = () => {
+            attempts++;
+            if (injectHeaderMenuButton()) {
+                log('Header button injected on attempt', attempts);
+                return;
+            }
+            
+            if (attempts < maxAttempts) {
+                log('Header button injection attempt', attempts, 'failed, retrying...');
+                setTimeout(tryInject, delay);
+            } else {
+                warn('Failed to inject header button after', maxAttempts, 'attempts');
+            }
+        };
+        
+        tryInject();
     };
 
     GM_registerMenuCommand('⚙️ Configure YT Suite', renderConfigDialog);
@@ -184,10 +282,14 @@
     let activeHoveredCard = null;
     let mainObserverInstance = null;
 
-    // Fast, delegated hover tracking
+    // Fast, delegated hover tracking with better error handling
     document.addEventListener('pointerover', (e) => {
-        const card = e.target.closest('ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer');
-        if (card) activeHoveredCard = card;
+        try {
+            const card = e.target.closest('ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer');
+            if (card) activeHoveredCard = card;
+        } catch (err) {
+            // Silent fail for hover tracking
+        }
     }, { passive: true });
 
     // Explicit delegation for UI trigger
@@ -203,28 +305,41 @@
     const awaitSnackbarDismissal = async () => {
         return new Promise((resolve) => {
             let frameFallback = 0;
-            const evaluateState = (obs) => {
-                const btn = document.querySelector('tp-yt-paper-toast #close-button button, tp-yt-paper-toast yt-button-shape button');
-                if (btn) {
-                    btn.click();
-                    if (obs) obs.disconnect();
-                    resolve();
-                    return true;
+            const maxFrames = 200; // Reduced timeout
+            
+            const evaluateState = () => {
+                try {
+                    // Try multiple selectors for snackbar close button
+                    const btn = document.querySelector('tp-yt-paper-toast #close-button button, tp-yt-paper-toast yt-button-shape button, ytd-notification-renderer #dismiss-button');
+                    if (btn) {
+                        btn.click();
+                        log('Snackbar dismissed');
+                        return true;
+                    }
+                } catch (e) {
+                    log('Snackbar check error:', e);
                 }
                 return false;
             };
 
-            if (evaluateState(null)) return;
-
-            const observer = new MutationObserver((_, obs) => evaluateState(obs));
-            observer.observe(document.body, { childList: true, subtree: true });
+            if (evaluateState()) {
+                resolve();
+                return;
+            }
 
             const check = () => {
                 frameFallback++;
-                if (frameFallback > 400) {
-                    observer.disconnect();
+                if (frameFallback >= maxFrames) {
+                    log('Snackbar dismissal timeout');
                     resolve();
-                } else requestAnimationFrame(check);
+                    return;
+                }
+                
+                if (!evaluateState()) {
+                    requestAnimationFrame(check);
+                } else {
+                    resolve();
+                }
             };
             requestAnimationFrame(check);
         });
@@ -233,54 +348,103 @@
     const awaitPopupInteraction = async (popupContainer) => {
         return new Promise((resolve) => {
             let frameFallback = 0;
-            const evaluateState = (obs) => {
-                const items = popupContainer.querySelectorAll('ytd-menu-service-item-renderer, tp-yt-paper-item');
-                for (const item of items) {
-                    const text = (item.textContent || '').toLowerCase();
-                    const icon = item.querySelector('yt-icon');
-                    const iconType = icon ? icon.getAttribute('icon') || '' : '';
-
-                    // Localization-independent target match matching SVGs or attribute keys
-                    const isTarget = 
-                        iconType === 'not_interested' || 
-                        iconType === 'remove_circle_outline' || 
-                        text.includes('empfehlen') || 
-                        text.includes('recommend') || 
-                        text.includes('interesse');
-
-                    if (isTarget) {
-                        item.click();
+            const maxFrames = 150;
+            
+            const evaluateState = () => {
+                try {
+                    // Search in both light and shadow DOM
+                    const searchRoot = popupContainer.shadowRoot || popupContainer;
+                    const items = searchRoot.querySelectorAll('ytd-menu-service-item-renderer, tp-yt-paper-item, yt-formatted-string');
+                    
+                    for (const item of items) {
+                        const text = (item.textContent || '').toLowerCase();
                         
-                        try {
-                            const channelEl = activeHoveredCard?.querySelector('ytd-channel-name a');
-                            if (channelEl) {
-                                const cName = channelEl.textContent.trim();
-                                if (cName && !STATE.channels.includes(cName)) {
-                                    STATE.channels.push(cName);
-                                    GM_setValue('yt_suite_channels', STATE.channels);
+                        // Check for icon in various ways
+                        let iconType = '';
+                        const icon = item.querySelector('yt-icon');
+                        if (icon) {
+                            iconType = icon.getAttribute('icon') || '';
+                            // Also check for icon type in class or data attributes
+                            if (!iconType) {
+                                const iconSvg = icon.querySelector('svg');
+                                if (iconSvg) {
+                                    // Some icons are identified by their SVG path
+                                    iconType = iconSvg.getAttribute('path') || '';
                                 }
                             }
-                        } catch {}
+                        }
 
-                        if (obs) obs.disconnect();
-                        resolve(true);
-                        return true;
+                        // Localization-independent target match - expanded list
+                        const isTarget = 
+                            iconType === 'not_interested' || 
+                            iconType === 'remove_circle_outline' ||
+                            iconType === 'block' ||
+                            text.includes('nicht interessiert') ||
+                            text.includes('empfehlen') || 
+                            text.includes('recommend') || 
+                            text.includes('interesse') ||
+                            text.includes('not interested') ||
+                            text.includes('don\'t recommend') ||
+                            text.includes('block');
+
+                        if (isTarget) {
+                            log('Found target menu item:', text);
+                            item.click();
+                            
+                            try {
+                                const channelEl = activeHoveredCard?.querySelector('ytd-channel-name a, #channel-name a');
+                                if (channelEl) {
+                                    const cName = channelEl.textContent.trim();
+                                    if (cName && !STATE.channels.includes(cName)) {
+                                        STATE.channels.push(cName);
+                                        GM_setValue('yt_suite_channels', STATE.channels);
+                                        log('Added channel to blocklist:', cName);
+                                    }
+                                }
+                            } catch (e) {
+                                log('Channel extraction error:', e);
+                            }
+
+                            resolve(true);
+                            return true;
+                        }
                     }
+                } catch (e) {
+                    log('Popup interaction error:', e);
                 }
                 return false;
             };
 
-            if (evaluateState(null)) return;
-            const observer = new MutationObserver((_, obs) => evaluateState(obs));
-            observer.observe(popupContainer, { childList: true, subtree: true });
+            if (evaluateState()) {
+                resolve(true);
+                return;
+            }
+            
+            const observer = new MutationObserver(() => {
+                if (evaluateState()) {
+                    observer.disconnect();
+                }
+            });
+            
+            try {
+                observer.observe(popupContainer, { childList: true, subtree: true });
+            } catch (e) {
+                log('Observer setup error:', e);
+            }
 
             const check = () => {
                 frameFallback++;
-                if (frameFallback > 300 || popupContainer.style.display === 'none') {
+                if (frameFallback >= maxFrames) {
                     observer.disconnect();
-                    document.body.click(); 
+                    // Close popup manually if no action found
+                    try {
+                        document.body.click(); 
+                    } catch {}
+                    log('Popup interaction timeout');
                     resolve(false);
-                } else requestAnimationFrame(check);
+                } else if (!evaluateState()) {
+                    requestAnimationFrame(check);
+                }
             };
             requestAnimationFrame(check);
         });
@@ -288,15 +452,37 @@
 
     const executeNativeDismissAsync = async (card) => {
         try {
-            const menuBtn = card.querySelector('#menu button, yt-icon-button#button');
-            if (!menuBtn) return;
+            log('Executing dismiss for card');
+            
+            // Find menu button - try multiple selectors
+            const menuBtn = card.querySelector('#menu button, yt-icon-button#button, yt-button-shape button, #menubutton');
+            if (!menuBtn) {
+                warn('Menu button not found for card');
+                return;
+            }
 
             menuBtn.click();
-            const popupContainer = document.querySelector('ytd-popup-container') || document.body;
+            log('Menu button clicked');
+            
+            // Wait a bit for popup to appear
+            await new Promise(r => setTimeout(r, 100));
+            
+            const popupContainer = findPopupContainer();
             const interactionSuccessful = await awaitPopupInteraction(popupContainer);
-            if (interactionSuccessful) await awaitSnackbarDismissal();
-        } catch {
-            // Isolated boundary
+            
+            if (interactionSuccessful) {
+                log('Interaction successful, waiting for snackbar');
+                await awaitSnackbarDismissal();
+                GM_notification({
+                    text: 'Channel added to blocklist!',
+                    title: 'YT Suite',
+                    timeout: 3000
+                });
+            } else {
+                warn('Popup interaction failed');
+            }
+        } catch (e) {
+            warn('executeNativeDismissAsync error:', e);
         }
     };
 
@@ -321,42 +507,65 @@
             const videoId = extractVideoId(card);
             
             // Polymer databinding race bypass: halt if node is functionally empty
-            if (!videoId) return;
+            if (!videoId) {
+                log('No video ID found for card');
+                return;
+            }
 
             // DOM recycling validation: check if identical node has been bound to a new video state
-            if (card.dataset.suiteVideoId === videoId) return;
+            if (card.dataset.suiteVideoId === videoId) {
+                log('Card already processed, skipping:', videoId);
+                return;
+            }
 
             // Reset dynamic class definitions for recycled targets
             card.dataset.suiteVideoId = videoId;
             card.classList.remove('yt-suite-hidden');
 
-            const isSponsored = card.querySelector('ytd-ad-slot-renderer, .badge-style-type-ad, .yt-badge-shape');
+            // Check for sponsored content with multiple selectors
+            const isSponsored = card.querySelector('ytd-ad-slot-renderer, .badge-style-type-ad, .yt-badge-shape, ytd-promoted-video-renderer, ytd-in-feed-ad-layout-renderer');
             if (isSponsored) {
+                log('Sponsored content hidden:', videoId);
                 hideNode(card);
                 return;
             }
 
-            const titleEl = card.querySelector('#video-title, yt-lockup-metadata-view-model');
-            const channelEl = card.querySelector('ytd-channel-name a, yt-lockup-metadata-view-model a');
+            // Try multiple selectors for title and channel
+            const titleEl = card.querySelector('#video-title, yt-lockup-metadata-view-model, #video-title-link, a#video-title');
+            const channelEl = card.querySelector('ytd-channel-name a, yt-lockup-metadata-view-model a, #channel-name a, #text.ytd-channel-name');
+            
             const titleText = titleEl ? titleEl.textContent.trim() : '';
             const channelName = channelEl ? channelEl.textContent.trim() : '';
 
             // Postpone evaluation if Polymer elements are mounted but bindings have not completed
             if (titleText === '' && channelName === '') {
-                card.removeAttribute('data-suite-video-id'); 
+                log('Empty title/channel, will retry on next mutation:', videoId);
+                delete card.dataset.suiteVideoId; 
                 return;
             }
 
-            const matchesKeyword = STATE.keywords.some(pattern => titleText.toLowerCase().includes(pattern.toLowerCase()));
-            const matchesChannel = STATE.channels.some(blocked => channelName.toLowerCase() === blocked.toLowerCase());
+            log('Processing card:', { videoId, title: titleText.substring(0, 30), channel: channelName });
+
+            const matchesKeyword = STATE.keywords.some(pattern => {
+                const match = titleText.toLowerCase().includes(pattern.toLowerCase());
+                if (match) log('Keyword match:', pattern);
+                return match;
+            });
+            
+            const matchesChannel = STATE.channels.some(blocked => {
+                const match = channelName.toLowerCase() === blocked.toLowerCase();
+                if (match) log('Channel match:', blocked);
+                return match;
+            });
 
             if (matchesKeyword || matchesChannel) {
+                log('Hiding card due to filter match');
                 hideNode(card);
                 return;
             }
 
             // Secure, overlay-proof block button injection inside thumbnails
-            const thumbnailContainer = card.querySelector('ytd-thumbnail, #thumbnail, .yt-core-image');
+            const thumbnailContainer = card.querySelector('ytd-thumbnail, #thumbnail, .yt-core-image, a#thumbnail');
             if (thumbnailContainer) {
                 let blockBtn = thumbnailContainer.querySelector('.yt-suite-block-btn');
                 if (!blockBtn) {
@@ -364,32 +573,55 @@
                     blockBtn.className = 'yt-suite-block-btn';
                     blockBtn.innerHTML = '🚫';
                     blockBtn.title = 'Block Channel';
-                    thumbnailContainer.style.position = 'relative';
+                    
+                    // Ensure position relative for absolute button positioning
+                    const computedStyle = window.getComputedStyle(thumbnailContainer);
+                    if (computedStyle.position === 'static' || computedStyle.position === '') {
+                        thumbnailContainer.style.position = 'relative';
+                    }
+                    
                     thumbnailContainer.appendChild(blockBtn);
+                    log('Block button injected for:', videoId);
                 }
             }
-        } catch {
-            // Isolated boundary
+        } catch (e) {
+            warn('processCardNode error:', e);
         }
     };
 
     const processStructuralSection = (section) => {
         try {
+            // Hide statement banners (YouTube announcements)
             if (section.querySelector('ytd-statement-banner-renderer')) {
+                log('Statement banner hidden');
                 hideNode(section);
                 return;
             }
 
-            if (STATE.removeShorts && section.querySelector('ytd-rich-shelf-renderer[is-shorts], yt-icon[icon="shorts_logo"], [overlay-style="SHORTS"]')) {
-                hideNode(section);
+            // Hide Shorts shelf if enabled
+            if (STATE.removeShorts) {
+                const isShortsShelf = section.querySelector('ytd-rich-shelf-renderer[is-shorts], yt-icon[icon="shorts_logo"], [overlay-style="SHORTS"], ytd-reel-shelf-renderer');
+                if (isShortsShelf) {
+                    log('Shorts shelf hidden');
+                    hideNode(section);
+                }
             }
-        } catch {}
+        } catch (e) {
+            warn('processStructuralSection error:', e);
+        }
     };
 
     const runFullSweep = () => {
+        log('Running full sweep...');
         injectHeaderMenuButton();
-        document.querySelectorAll('ytd-rich-section-renderer').forEach(processStructuralSection);
-        document.querySelectorAll('ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer').forEach(processCardNode);
+        
+        try {
+            document.querySelectorAll('ytd-rich-section-renderer').forEach(processStructuralSection);
+            document.querySelectorAll('ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer').forEach(processCardNode);
+            log('Full sweep completed');
+        } catch (e) {
+            warn('Full sweep error:', e);
+        }
     };
 
     const initObserver = () => {
@@ -398,21 +630,25 @@
         mainObserverInstance = new MutationObserver((mutations) => {
             let hasSignificantStructuralMutations = false;
             
-            for (const mutation of mutations) {
-                for (const node of mutation.addedNodes) {
-                    if (node.nodeType === 1) { 
-                        const tag = node.tagName;
-                        if (tag === 'YTD-MASTHEAD') {
-                            injectHeaderMenuButton();
-                        } else if (tag === 'YTD-RICH-ITEM-RENDERER' || tag === 'YTD-VIDEO-RENDERER' || tag === 'YTD-COMPACT-VIDEO-RENDERER') {
-                            processCardNode(node);
-                        } else if (tag === 'YTD-RICH-SECTION-RENDERER') {
-                            processStructuralSection(node);
-                        } else {
-                            hasSignificantStructuralMutations = true;
+            try {
+                for (const mutation of mutations) {
+                    for (const node of mutation.addedNodes) {
+                        if (node.nodeType === 1) { 
+                            const tag = node.tagName;
+                            if (tag === 'YTD-MASTHEAD') {
+                                injectHeaderMenuButton();
+                            } else if (tag === 'YTD-RICH-ITEM-RENDERER' || tag === 'YTD-VIDEO-RENDERER' || tag === 'YTD-COMPACT-VIDEO-RENDERER') {
+                                processCardNode(node);
+                            } else if (tag === 'YTD-RICH-SECTION-RENDERER') {
+                                processStructuralSection(node);
+                            } else {
+                                hasSignificantStructuralMutations = true;
+                            }
                         }
                     }
                 }
+            } catch (e) {
+                warn('MutationObserver error:', e);
             }
 
             if (hasSignificantStructuralMutations) {
@@ -427,21 +663,33 @@
             attributes: true,
             attributeFilter: ['href', 'data-suite-video-id'] 
         });
+        
+        log('MutationObserver initialized');
     };
 
     const bootstrap = () => {
+        log('Bootstrapping YT Suite...');
         injectStyles();
         runFullSweep();
         initObserver();
+        
+        // Start retry mechanism for header button
+        injectHeaderMenuButtonWithRetry();
+        
+        log('YT Suite bootstrapped successfully');
     };
 
     document.addEventListener('yt-navigate-finish', () => {
+        log('yt-navigate-finish event detected');
         runFullSweep();
     });
 
+    // Use delayed initialization to ensure DOM is ready
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', bootstrap);
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(bootstrap, 500);
+        });
     } else {
-        bootstrap();
+        setTimeout(bootstrap, 500);
     }
 })();

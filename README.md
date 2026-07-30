@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/banner.svg" width="100%" alt="YouTube Homepage Suite Banner">
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Version-8.1.0-3ea6ff?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTMgNWgxOGwtNyA4djZsLTQgMnYtOGwtNy0yeiIvPjwvc3ZnPg==&logoColor=white" alt="Version">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Platform-YouTube-red?style=flat-square&logo=youtube&logoColor=white" alt="Platform">
@@ -229,6 +233,38 @@ Das Settings-Panel ist in **4 Gruppen** organisiert:
 MIT License — Open Source, frei verwendbar, frei modifizierbar.
 
 > **Disclaimer:** Dieses Userscript wird ohne Gewährleistung bereitgestellt. Es steht in keiner Verbindung zu YouTube/Google.
+
+---
+
+## 📸 Screenshots
+
+<p align="center">
+  <a href="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/screenshots/feed-filter.png">
+    <img src="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/screenshots/feed-filter.png" width="85%" alt="Feed & Filter Panel">
+  </a>
+  <br>
+  <sub><b>Feed & Filter</b> — Keyword-Blacklist, Kanal-Block, Shorts entfernen</sub>
+</p>
+
+<br>
+
+<p align="center">
+  <a href="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/screenshots/declutter.png">
+    <img src="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/screenshots/declutter.png" width="85%" alt="Declutter Panel">
+  </a>
+  <br>
+  <sub><b>Aufräumen</b> — Fokusmodus, Kommentare & Chat ausblenden</sub>
+</p>
+
+<br>
+
+<p align="center">
+  <a href="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/screenshots/help-shortcuts.png">
+    <img src="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/screenshots/help-shortcuts.png" width="85%" alt="Help & Shortcuts Panel">
+  </a>
+  <br>
+  <sub><b>Hilfe & Shortcuts</b> — Alle Tastenkombinationen auf einen Blick</sub>
+</p>
 
 ---
 

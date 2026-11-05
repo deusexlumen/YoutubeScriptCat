@@ -55,7 +55,7 @@
 - **🛡️ SponsorBlock-Integration** — Community-Segmente überspringen (sponsor, selfpromo, intro, outro, ...)
 
 ### 🛠️ Werkzeuge
-- **📄 Transkript-Export** — TXT, SRT oder Markdown mit Zeitmarken (Alt + D)
+- **📄 Transkript-Export** — TXT, SRT oder Markdown mit Zeitmarken (Alt + X)
 - **⌨️ 11 Power-Shortcuts** — Schnellzugriff auf alle Funktionen
 - **📊 Live-Trefferzähler** — Zeigt, wie viel diese Sitzung gefiltert wurde
 
@@ -100,7 +100,7 @@ Nach Installation läuft das Script automatisch auf allen `youtube.com/*`-Seiten
 |--------|---------|
 | **Einstellungen öffnen** | `Alt + Y` oder "YT Suite"-Button im Header |
 | **Hilfe & Shortcuts** | `Alt + H` |
-| **Transkript exportieren** | `Alt + D` oder Button unter dem Video |
+| **Transkript exportieren** | `Alt + X` oder Button unter dem Video |
 | **Kanal blockieren** | Hover über Thumbnail → ✕-Button |
 | **Shorts an/aus** | `Alt + S` |
 | **Kommentare an/aus** | `Alt + K` |
@@ -146,7 +146,31 @@ Das Settings-Panel ist in **4 Gruppen** organisiert:
 ## 📸 Screenshots
 
 <p align="center">
-  <i>🖼️ Screenshots folgen — PRs mit Screenshots willkommen!</i>
+  <a href="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/screenshots/feed-filter.png">
+    <img src="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/screenshots/feed-filter.png" width="85%" alt="Feed & Filter Panel">
+  </a>
+  <br>
+  <sub><b>Feed & Filter</b> — Keyword-Blacklist, Kanal-Block, Shorts entfernen</sub>
+</p>
+
+<br>
+
+<p align="center">
+  <a href="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/screenshots/declutter.png">
+    <img src="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/screenshots/declutter.png" width="85%" alt="Declutter Panel">
+  </a>
+  <br>
+  <sub><b>Aufräumen</b> — Fokusmodus, Kommentare & Chat ausblenden</sub>
+</p>
+
+<br>
+
+<p align="center">
+  <a href="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/screenshots/help-shortcuts.png">
+    <img src="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/screenshots/help-shortcuts.png" width="85%" alt="Help & Shortcuts Panel">
+  </a>
+  <br>
+  <sub><b>Hilfe & Shortcuts</b> — Alle Tastenkombinationen auf einen Blick</sub>
 </p>
 
 ---
@@ -233,38 +257,6 @@ Das Settings-Panel ist in **4 Gruppen** organisiert:
 MIT License — Open Source, frei verwendbar, frei modifizierbar.
 
 > **Disclaimer:** Dieses Userscript wird ohne Gewährleistung bereitgestellt. Es steht in keiner Verbindung zu YouTube/Google.
-
----
-
-## 📸 Screenshots
-
-<p align="center">
-  <a href="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/screenshots/feed-filter.png">
-    <img src="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/screenshots/feed-filter.png" width="85%" alt="Feed & Filter Panel">
-  </a>
-  <br>
-  <sub><b>Feed & Filter</b> — Keyword-Blacklist, Kanal-Block, Shorts entfernen</sub>
-</p>
-
-<br>
-
-<p align="center">
-  <a href="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/screenshots/declutter.png">
-    <img src="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/screenshots/declutter.png" width="85%" alt="Declutter Panel">
-  </a>
-  <br>
-  <sub><b>Aufräumen</b> — Fokusmodus, Kommentare & Chat ausblenden</sub>
-</p>
-
-<br>
-
-<p align="center">
-  <a href="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/screenshots/help-shortcuts.png">
-    <img src="https://raw.githubusercontent.com/deusexlumen/YoutubeScriptCat/main/assets/screenshots/help-shortcuts.png" width="85%" alt="Help & Shortcuts Panel">
-  </a>
-  <br>
-  <sub><b>Hilfe & Shortcuts</b> — Alle Tastenkombinationen auf einen Blick</sub>
-</p>
 
 ---
 
